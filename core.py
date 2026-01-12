@@ -44,6 +44,8 @@ LOOP_B2 = 2
 LOOP_C2 = 2
 LOOP_B4 = 4
 LOOP_C4 = 4
+DISSOLVE_B3 = 3
+DISSOLVE_C3 = 3
 
 
 def farthest_pair(points: list[Vector]) -> tuple[int, int]:
@@ -284,6 +286,22 @@ def _find_edge(
         if (e.verts[0] is v1 and e.verts[1] is v2) or (e.verts[0] is v2 and e.verts[1] is v1):
             return e
     return None
+
+
+def _dissolve_edge_single(
+    bm: bmesh.types.BMesh,
+    v1: bmesh.types.BMVert,
+    v2: bmesh.types.BMVert,
+) -> bool:
+    """Disolver un edge directo entre dos verts."""
+    edge = _find_edge(v1, v2)
+    if edge is None or not edge.is_valid:
+        return False
+    try:
+        bmesh.ops.dissolve_edges(bm, edges=[edge])
+    except Exception:
+        return False
+    return True
 
 
 def slide_vert_toward(
@@ -675,7 +693,16 @@ def run() -> None:
         created_edges.extend(edges)
         connection_results.append((label, v1, v2, status, edges))
 
-    # --- Paso 5: slide ---
+    # --- Paso 5: disolver edge B3/C3 ---
+    b3_idx = _index_to_zero(DISSOLVE_B3)
+    c3_idx = _index_to_zero(DISSOLVE_C3)
+    if b3_idx < len(B) and c3_idx < len(C):
+        if not _dissolve_edge_single(bm, B[b3_idx], C[c3_idx]):
+            print("Aviso: no se pudo disolver el edge B3/C3.")
+    else:
+        print("Aviso: indices fuera de rango para disolver B3/C3.")
+
+    # --- Paso 6: slide ---
     if INVERT_CONNECTION:
         slide_from_idx = _index_to_zero(SLIDE_FROM_C)
         slide_to_idx = _index_to_zero(SLIDE_TO_D)
@@ -697,7 +724,7 @@ def run() -> None:
             if not slide_vert_toward(slide_from, slide_to, SLIDE_CLAMP, SLIDE_FACTOR):
                 print("Aviso: slide fallido (B3->A3).")
 
-    # --- Paso 6: loop dissolve ---
+    # --- Paso 7: loop dissolve ---
     def _dissolve_step(label: str, v1: bmesh.types.BMVert, v2: bmesh.types.BMVert) -> None:
         if not v1.is_valid or not v2.is_valid:
             print(f"Loop dissolve SKIP: {label} (missing vertex)")
@@ -719,7 +746,7 @@ def run() -> None:
         label = "B4/C4" if not INVERT_CONNECTION else "C4/B4"
         _dissolve_step(label, B[b4_idx], C[c4_idx])
 
-    # --- Paso 7: verificacion ---
+    # --- Paso 8: verificacion ---
     if VERIFY_CONNECTIONS:
         missing = 0
         for label, v1, v2, status, _edges in connection_results:
@@ -735,7 +762,7 @@ def run() -> None:
         if missing == 0:
             print("Verify: all expected edges present.")
 
-    # --- Paso 8: seleccion final y update ---
+    # --- Paso 9: seleccion final y update ---
     if SELECT_CREATED_EDGES:
         for item in created_edges:
             edge = _as_edge(item)
