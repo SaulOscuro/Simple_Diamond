@@ -617,6 +617,12 @@ def run() -> None:
         return
 
     # --- Paso 3: orden y alineacion ---
+    def _rail_center(items: list[bmesh.types.BMVert]) -> Vector:
+        acc = Vector((0.0, 0.0, 0.0))
+        for v in items:
+            acc += v.co
+        return acc / len(items)
+
     def _rail_mean(items: list[bmesh.types.BMVert]) -> float:
         return sum(v.co[secondary_idx] for v in items) / len(items)
 
@@ -630,7 +636,24 @@ def run() -> None:
         if active_rail is not None:
             remaining = [r for r in rails if r is not active_rail]
             a_mean = _rail_mean(active_rail)
-            remaining.sort(key=lambda r: _rail_mean(r) - a_mean)
+            a_center = _rail_center(active_rail)
+            centers = [(r, _rail_center(r)) for r in remaining]
+            centroid = Vector((0.0, 0.0, 0.0))
+            for _r, c in centers:
+                centroid += c
+            if centers:
+                centroid /= len(centers)
+            direction = centroid - a_center
+            if direction.length < 1e-8:
+                remaining.sort(key=lambda r: _rail_mean(r) - a_mean)
+            else:
+                direction.normalize()
+                remaining = [
+                    r for r, _c in sorted(
+                        centers,
+                        key=lambda item: (item[1] - a_center).dot(direction),
+                    )
+                ]
             A = active_rail
             B, C, D = remaining[0], remaining[1], remaining[2]
         else:
